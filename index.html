@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Real Estate Pro | KES</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./styles.css"/>
+</head>
+<body>
+  <div id="app">
+    <aside class="sidebar">
+      <div class="brand">Real Estate Pro</div>
+      <nav class="menu">
+        <button data-route="dashboard" class="menu-item active"><span class="icon" aria-hidden="true">📊</span>Dashboard</button>
+        <button data-route="properties" class="menu-item"><span class="icon" aria-hidden="true">🏢</span>Properties</button>
+        <button data-route="units" class="menu-item"><span class="icon" aria-hidden="true">🏘️</span>Units</button>
+        <button data-route="tenants" class="menu-item"><span class="icon" aria-hidden="true">👤</span>Tenants</button>
+        <button data-route="leases" class="menu-item"><span class="icon" aria-hidden="true">📝</span>Leases</button>
+        <button data-route="invoices" class="menu-item"><span class="icon" aria-hidden="true">🧾</span>Invoices</button>
+        <button data-route="payments" class="menu-item"><span class="icon" aria-hidden="true">💵</span>Payments</button>
+        <button data-route="maintenance" class="menu-item"><span class="icon" aria-hidden="true">🛠️</span>Maintenance</button>
+        <button data-route="reports" class="menu-item"><span class="icon" aria-hidden="true">📈</span>Reports</button>
+        <button data-route="documents" class="menu-item"><span class="icon" aria-hidden="true">📂</span>Documents</button>
+        <button data-route="messages" class="menu-item"><span class="icon" aria-hidden="true">✉️</span>Messages</button>
+        <button data-route="users" class="menu-item"><span class="icon" aria-hidden="true">👥</span>Users & Roles</button>
+        <button data-route="settings" class="menu-item"><span class="icon" aria-hidden="true">⚙️</span>Settings</button>
+      </nav>
+      <div class="sidebar-foot">
+        <span class="muted">KES default</span>
+      </div>
+    </aside>
+
+    <main class="content">
+      <header class="topbar">
+        <div class="left">
+          <button id="mobileMenu" aria-label="Toggle menu">☰</button>
+          <h1 id="routeTitle">Dashboard</h1>
+        </div>
+        <div class="right">
+          <select id="activeRole">
+            <option value="admin">Admin</option>
+            <option value="landlord">Landlord</option>
+            <option value="tenant">Tenant</option>
+          </select>
+          <span id="currentUser">Signed in: demo@estate.pro</span>
+        </div>
+      </header>
+
+      <section id="view"></section>
+    </main>
+  </div>
+
+  <!-- Login Modal -->
+  <div id="loginModal" class="modal-backdrop" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.4); display:flex; align-items:center; justify-content:center; z-index:100;">
+    <div class="modal" style="background:#fff; border-radius:12px; padding:24px; width:min(320px, 90%);">
+      <div style="display:flex; align-items:center; justify-content:space-between;">
+        <h2 style="margin-top:0;">Admin Login</h2>
+        <!-- Close button added -->
+        <button id="loginCloseBtn" class="icon" style="background:transparent;border:none;font-size:18px;cursor:pointer;">✕</button>
+      </div>
+      <form id="loginForm" class="form">
+        <label>Username<input name="username" required value="admin"/></label>
+        <label>Password<input name="password" type="password" required/></label>
+        <div class="actions-row" style="margin-top:16px;">
+          <button class="btn" type="submit">Login</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <template id="tpl-dashboard">
+    <div class="grid dash-grid">
+      <div class="card kpi kpi-occupancy">
+        <div class="kpi-label">Occupancy</div>
+        <div class="kpi-value" id="kpi-occupancy">--%</div>
+      </div>
+      <div class="card kpi kpi-due">
+        <div class="kpi-label">Monthly Rent Due</div>
+        <div class="kpi-value" id="kpi-due">KES 0</div>
+      </div>
+      <div class="card kpi kpi-collected">
+        <div class="kpi-label">Collected</div>
+        <div class="kpi-value" id="kpi-collected">KES 0</div>
+      </div>
+      <div class="card kpi kpi-arrears">
+        <div class="kpi-label">Arrears</div>
+        <div class="kpi-value" id="kpi-arrears">KES 0</div>
+      </div>
+      <div class="card chart">
+        <canvas id="chartCollections"></canvas>
+      </div>
+      <div class="card chart">
+        <canvas id="chartOccupancy"></canvas>
+      </div>
+      <div class="card list">
+        <div class="card-header">
+          <h3>Upcoming Due Invoices</h3>
+          <button class="btn btn-light" data-action="generate-invoices">Generate This Month</button>
+        </div>
+        <div id="upcomingInvoices"></div>
+      </div>
+      <div class="card list">
+        <div class="card-header">
+          <h3>Open Maintenance</h3>
+          <button class="btn btn-light" data-action="new-maintenance">New Ticket</button>
+        </div>
+        <div id="openMaintenance"></div>
+      </div>
+    </div>
+  </template>
+
+  <template id="tpl-properties">
+    <div class="header-actions">
+      <h2>Properties</h2>
+      <div class="actions-row">
+        <button class="btn" data-action="add-property">Add Property</button>
+        <button class="btn btn-light" data-action="print-table">Print Table</button>
+      </div>
+    </div>
+    <div id="propertiesTable" class="table"></div>
+  </template>
+
+  <template id="tpl-units">
+    <div class="header-actions">
+      <h2>Units</h2>
+      <div class="actions-row">
+        <button class="btn" data-action="add-unit">Add Unit</button>
+        <button class="btn btn-light" data-action="print-table">Print Table</button>
+      </div>
+    </div>
+    <div id="unitsTable" class="table"></div>
+  </template>
+
+  <template id="tpl-tenants">
+    <div class="header-actions">
+      <h2>Tenants</h2>
+      <div class="actions-row">
+        <button class="btn" data-action="add-tenant">Add Tenant</button>
+        <button class="btn btn-light" data-action="print-table">Print Table</button>
+      </div>
+    </div>
+    <div id="tenantsTable" class="table"></div>
+  </template>
+
+  <template id="tpl-leases">
+    <div class="header-actions">
+      <h2>Leases</h2>
+      <div class="actions-row">
+        <button class="btn" data-action="add-lease">Add Lease</button>
+        <button class="btn btn-light" data-action="print-table">Print Table</button>
+      </div>
+    </div>
+    <div id="leasesTable" class="table"></div>
+  </template>
+
+  <template id="tpl-invoices">
+    <div class="header-actions">
+      <h2>Invoices</h2>
+      <div class="actions-row">
+        <button class="btn" data-action="generate-invoices">Generate Monthly Invoices</button>
+        <button class="btn btn-light" data-action="export-invoices">Export CSV</button>
+        <button class="btn btn-light" data-action="print-table">Print Table</button>
+      </div>
+    </div>
+    <div id="invoicesTable" class="table"></div>
+  </template>
+
+  <template id="tpl-payments">
+    <div class="header-actions">
+      <h2>Payments</h2>
+      <div class="actions-row">
+        <button class="btn" data-action="add-payment">Record Payment</button>
+        <button class="btn btn-light" data-action="print-table">Print Table</button>
+      </div>
+    </div>
+    <div id="paymentsTable" class="table"></div>
+  </template>
+
+  <template id="tpl-maintenance">
+    <div class="header-actions">
+      <h2>Maintenance</h2>
+      <div class="actions-row">
+        <button class="btn" data-action="new-maintenance">New Ticket</button>
+        <button class="btn btn-light" data-action="print-table">Print Table</button>
+      </div>
+    </div>
+    <div id="maintenanceTable" class="table"></div>
+  </template>
+
+  <template id="tpl-reports">
+    <div class="header-actions">
+      <h2>Reports</h2>
+      <div class="actions-row">
+        <button class="btn btn-light" data-action="print-table">Print Table</button>
+      </div>
+    </div>
+    <div class="report-grid">
+      <button class="report-card" data-action="report-cashflow"><span class="ri">💧</span><div><strong>Cashflow</strong><div class="muted">Monthly due vs collected</div></div></button>
+      <button class="report-card" data-action="report-arrears"><span class="ri">⏰</span><div><strong>Arrears</strong><div class="muted">Unpaid invoices</div></div></button>
+      <button class="report-card" data-action="report-occupancy"><span class="ri">🏠</span><div><strong>Occupancy</strong><div class="muted">Occupied vs vacant</div></div></button>
+    </div>
+    <div id="reportsContent"></div>
+  </template>
+
+  <template id="tpl-documents">
+    <div class="header-actions">
+      <h2>Documents</h2>
+      <div class="actions-row">
+        <button class="btn btn-light" data-action="upload-doc">Upload</button>
+        <button class="btn btn-light" data-action="print-table">Print Table</button>
+      </div>
+    </div>
+    <div id="documentsList" class="table"></div>
+  </template>
+
+  <template id="tpl-messages">
+    <div class="header-actions">
+      <h2>Messages</h2>
+      <button class="btn btn-light" data-action="new-message">New Message</button>
+    </div>
+    <div id="messagesThread" class="messages"></div>
+  </template>
+
+  <template id="tpl-users">
+    <div class="header-actions">
+      <h2>Users & Roles</h2>
+      <div class="actions-row">
+        <button class="btn" data-action="add-user">Add User</button>
+        <button class="btn btn-light" data-action="print-table">Print Table</button>
+      </div>
+    </div>
+    <div id="usersTable" class="table"></div>
+  </template>
+
+  <template id="tpl-settings">
+    <div class="header-actions">
+      <h2>Settings</h2>
+    </div>
+    <form id="settingsForm" class="form grid">
+      <label>
+        Default Due Day (1-28)
+        <input type="number" name="dueDay" min="1" max="28" required />
+      </label>
+      <label>
+        Late Fee (KES)
+        <input type="number" name="lateFee" min="0" step="1"/>
+      </label>
+      <label>
+        Company Name
+        <input type="text" name="companyName" placeholder="Company Ltd."/>
+      </label>
+      <label>
+        Receipt Footer Note
+        <input type="text" name="receiptNote" placeholder="Thank you for your payment"/>
+      </label>
+      <label>
+        Company Logo URL
+        <input type="url" name="logoUrl" placeholder="https://example.com/logo.png"/>
+      </label>
+      <label>
+        Upload Company Logo (local)
+        <input type="file" name="logoFile" accept="image/*"/>
+        <small>Preferred: local file for printing; saved in your browser.</small>
+        <img id="logoPreview" alt="Logo preview" style="max-height:48px; display:none; margin-top:6px;"/>
+      </label>
+      <label>
+        Landlord Signature (local)
+        <input type="file" name="signatureFile" accept="image/*"/>
+        <small>Used on receipts; saved in your browser.</small>
+        <img id="signaturePreview" alt="Signature preview" style="max-height:36px; display:none; margin-top:6px;"/>
+      </label>
+      <label>
+        Landlord Printed Name
+        <input type="text" name="landlordName" placeholder="John Mwangi"/>
+      </label>
+      <fieldset style="border:1px solid var(--border);border-radius:8px;padding:12px;">
+        <legend style="font-weight:600;font-size:14px;">JSON Data Management (Admin Only)</legend>
+        <label>
+          Export / Backup
+          <button type="button" class="btn btn-light" data-action="export-json">Download JSON Backup</button>
+        </label>
+        <label>
+          Import / Restore
+          <input type="file" name="importFile" accept=".json" id="importFile" style="display:none;"/>
+          <button type="button" class="btn btn-light" onclick="document.getElementById('importFile').click()">Upload JSON File</button>
+        </label>
+        <label style="display:none;" id="importConfirm">
+          Replace all data?
+          <button type="button" class="btn btn-danger" data-action="import-json">Confirm Import</button>
+        </label>
+      </fieldset>
+      <label>
+        Company Address
+        <input type="text" name="address" placeholder="Street, City, Country"/>
+      </label>
+      <label>
+        Company Contact
+        <input type="text" name="contact" placeholder="+254 700 000000 • info@example.com"/>
+      </label>
+      <label>
+        Theme
+        <select name="theme">
+          <option value="light">Light</option>
+          <option value="dark">Dark</option>
+        </select>
+      </label>
+      <label>
+        Primary Color
+        <input type="color" name="primaryColor" value="#111111"/>
+      </label>
+      <label>
+        Secondary Color
+        <input type="color" name="secondaryColor" value="#f2f2f2"/>
+      </label>
+      <div class="actions-row">
+        <button class="btn" type="submit">Save Settings</button>
+        <button class="btn btn-light" type="button" data-action="seed-demo">Seed Demo Data</button>
+        <button class="btn btn-light" type="button" data-action="clear-data">Clear All Data</button>
+      </div>
+    </form>
+  </template>
+
+  <template id="tpl-modal">
+    <div class="modal-backdrop">
+      <div class="modal">
+        <div class="modal-header">
+          <h3 class="modal-title"></h3>
+          <button class="icon" data-close="true">✕</button>
+        </div>
+        <div class="modal-body"></div>
+      </div>
+    </div>
+  </template>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "dayjs": "https://cdn.jsdelivr.net/npm/dayjs@1.11.11/+esm",
+      "chart.js/auto": "https://cdn.jsdelivr.net/npm/chart.js@4.4.3/auto/+esm"
+    }
+  }
+  </script>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
