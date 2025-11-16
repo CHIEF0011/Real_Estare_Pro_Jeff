@@ -25,6 +25,7 @@
         <button data-route="documents" class="menu-item"><span class="icon" aria-hidden="true">📂</span>Documents</button>
         <button data-route="messages" class="menu-item"><span class="icon" aria-hidden="true">✉️</span>Messages</button>
         <button data-route="users" class="menu-item"><span class="icon" aria-hidden="true">👥</span>Users & Roles</button>
+        <button data-route="bankstatement" class="menu-item"><span class="icon" aria-hidden="true">🏦</span>Bank Statement</button>
         <button data-route="settings" class="menu-item"><span class="icon" aria-hidden="true">⚙️</span>Settings</button>
       </nav>
       <div class="sidebar-foot">
@@ -232,6 +233,18 @@
       </div>
     </div>
     <div id="usersTable" class="table"></div>
+  </template>
+
+  <template id="tpl-bankstatement">
+    <div class="header-actions">
+      <h2>Bank Statement</h2>
+      <div class="actions-row">
+        <button class="btn" data-action="add-bankstatement">Add Entry</button>
+        <button class="btn btn-warning" data-action="withdraw-bankstatement">Withdraw</button>
+        <button class="btn btn-light" data-action="print-table">Print Table</button>
+      </div>
+    </div>
+    <div id="bankstatementTable" class="table"></div>
   </template>
 
   <template id="tpl-settings">

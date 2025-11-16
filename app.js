@@ -43,6 +43,7 @@ function render(route='dashboard') {
   if (route==='documents') renderDocuments();
   if (route==='messages') renderMessages();
   if (route==='users') renderUsers();
+  if (route==='bankstatement') renderBankStatement();
   if (route==='settings') renderSettings();
 }
 
@@ -223,6 +224,76 @@ function renderUsers() {
   document.getElementById('usersTable').innerHTML = table(['Email','Role',''], rows);
 }
 
+/* Bank Statement */
+function renderBankStatement() {
+  const entries = list('bankstatement');
+  
+  // Group entries by bank account and calculate cumulative balance
+  const bankAccounts = {};
+  entries.forEach(e => {
+    const key = `${e.bankId}_${e.accountNumber}`;
+    if (!bankAccounts[key]) {
+      bankAccounts[key] = {
+        amountDebited: e.amountDebited || 0,
+        entries: []
+      };
+    }
+    bankAccounts[key].entries.push(e);
+  });
+  
+  // Calculate account balance for each entry
+  const processedEntries = [];
+  Object.values(bankAccounts).forEach(account => {
+    let totalWithdrawn = 0;
+    let totalCharges = 0;
+    
+    account.entries.forEach(e => {
+      totalWithdrawn += Number(e.amountDrawn || 0);
+      totalCharges += Number(e.bankCharges || 0);
+      const calculatedBalance = account.amountDebited - totalWithdrawn - totalCharges;
+      
+      processedEntries.push({
+        ...e,
+        calculatedBalance: Math.max(calculatedBalance, 0)
+      });
+    });
+  });
+  
+  const rows = processedEntries.map(e => {
+    return [
+      e.bankId || '-',
+      e.bankName || '-',
+      e.accountNumber || '-',
+      e.accountHolder || '-',
+      e.debitDate ? dayjs(e.debitDate).format('DD MMM YYYY') : '-',
+      fmtKES(e.amountDebited || 0),
+      fmtKES(e.amountDrawn || 0),
+      fmtKES(e.bankCharges || 0),
+      fmtKES(e.calculatedBalance || 0),
+      `<button class="btn btn-light" data-edit-bankstatement="${e.id}" title="Edit">✏️</button>
+       <button class="btn btn-light" data-del-bankstatement="${e.id}" title="Delete">🗑️</button>`
+    ];
+  });
+  
+  // Calculate footer totals
+  const totalDebited = Object.values(bankAccounts).reduce((sum, account) => sum + account.amountDebited, 0);
+  const totalDrawn = processedEntries.reduce((sum, item) => sum + Number(item.amountDrawn || 0), 0);
+  const totalCharges = processedEntries.reduce((sum, item) => sum + Number(item.bankCharges || 0), 0);
+  const totalBalance = totalDebited - totalDrawn - totalCharges;
+  
+  const footerRow = `<tfoot><tr style="font-weight:600;background:#fafafa;">
+    <td colspan="5" style="text-align:right;">TOTALS</td>
+    <td>${fmtKES(totalDebited)}</td>
+    <td>${fmtKES(totalDrawn)}</td>
+    <td>${fmtKES(totalCharges)}</td>
+    <td>${fmtKES(Math.max(totalBalance, 0))}</td>
+    <td></td>
+  </tr></tfoot>`;
+  
+  const tableHTML = table(['Bank ID','Bank Name','Account No.','Account Holder','Debit Date','Amount Debited','Amount Withdrawn','Bank Charges','Account Balance',''], rows);
+  document.getElementById('bankstatementTable').innerHTML = tableHTML.replace('</table>', footerRow + '</table>');
+}
+
 /* Settings */
 function renderSettings() {
   const form = document.getElementById('settingsForm');
@@ -285,7 +356,7 @@ function renderSettings() {
 /* Actions & Modals */
 function attachActions(route) {
   // Update action buttons with professional color classes
-  view.querySelectorAll('[data-action="add-property"], [data-action="add-unit"], [data-action="add-tenant"], [data-action="add-lease"], [data-action="add-payment"], [data-action="add-user"]').forEach(b=>{
+  view.querySelectorAll('[data-action="add-property"], [data-action="add-unit"], [data-action="add-tenant"], [data-action="add-lease"], [data-action="add-payment"], [data-action="add-user"], [data-action="add-bankstatement"]').forEach(b=>{
     b.classList.add('btn-success');
     b.onclick = () => {
       if (!protectAdminAction()) return;
@@ -295,6 +366,16 @@ function attachActions(route) {
       else if (b.dataset.action === 'add-lease') modalLease();
       else if (b.dataset.action === 'add-payment') modalPayment();
       else if (b.dataset.action === 'add-user') modalUser();
+      else if (b.dataset.action === 'add-bankstatement') modalBankStatement();
+    };
+  });
+
+  // Add the new withdraw button handler
+  view.querySelectorAll('[data-action="withdraw-bankstatement"]').forEach(b=>{
+    b.classList.add('btn-warning');
+    b.onclick = () => {
+      if (!protectAdminAction()) return;
+      modalWithdrawFromAccount();
     };
   });
 
@@ -318,7 +399,7 @@ function attachActions(route) {
   });
 
   // Keep existing individual button handlers with admin protection
-  view.querySelectorAll('[data-edit-prop], [data-edit-unit], [data-edit-tenant], [data-edit-lease], [data-edit-invoice], [data-edit-payment], [data-edit-maint]').forEach(b=>{
+  view.querySelectorAll('[data-edit-prop], [data-edit-unit], [data-edit-tenant], [data-edit-lease], [data-edit-invoice], [data-edit-payment], [data-edit-maint], [data-edit-bankstatement]').forEach(b=>{
     b.classList.add('btn-light');
     b.onclick = (e) => {
       if (!protectAdminAction()) return;
@@ -326,7 +407,7 @@ function attachActions(route) {
     };
   });
 
-  view.querySelectorAll('[data-del-prop], [data-del-unit], [data-del-tenant], [data-del-lease], [data-del-invoice], [data-del-payment], [data-del-maint], [data-del-user], [data-del-doc]').forEach(b=>{
+  view.querySelectorAll('[data-del-prop], [data-del-unit], [data-del-tenant], [data-del-lease], [data-del-invoice], [data-del-payment], [data-del-maint], [data-del-user], [data-del-doc], [data-del-bankstatement]').forEach(b=>{
     b.classList.add('btn-danger');
     b.onclick = (e) => {
       if (!protectAdminAction()) return;
@@ -340,10 +421,11 @@ function attachActions(route) {
       else if (dataset.delMaint) { if(confirm('Delete ticket?')){ remove('maintenance', dataset.delMaint); render('maintenance'); } }
       else if (dataset.delUser) { if(confirm('Delete user?')){ remove('users', dataset.delUser); render('users'); } }
       else if (dataset.delDoc) { if(confirm('Delete document?')){ remove('documents', dataset.delDoc); render('documents'); } }
+      else if (dataset.delBankstatement) { if(confirm('Delete bank statement entry?')){ remove('bankstatement', dataset.delBankstatement); render('bankstatement'); } }
     };
   });
 
-  view.querySelectorAll('[data-view-prop], [data-view-unit], [data-view-tenant], [data-view-lease], [data-view-invoice], [data-view-payment], [data-view-maint], [data-view-receipt]').forEach(b=>{
+  view.querySelectorAll('[data-view-prop], [data-view-unit], [data-view-tenant], [data-view-lease], [data-view-invoice], [data-view-payment], [data-view-maint], [data-view-receipt], [data-view-bankstatement]').forEach(b=>{
     b.classList.add('btn-light');
   });
 
@@ -405,7 +487,7 @@ function attachActions(route) {
   view.querySelectorAll('[data-action="print-table"]').forEach(b=>b.onclick=()=>printCurrentTable());
   // Delegated fallback to ensure action buttons always respond
   view.addEventListener('click', (e)=>{
-    const t = e.target.closest('[data-view-receipt],[data-view-prop],[data-edit-prop],[data-del-prop],[data-view-unit],[data-edit-unit],[data-del-unit],[data-view-tenant],[data-edit-tenant],[data-del-tenant],[data-view-lease],[data-edit-lease],[data-del-lease],[data-view-invoice],[data-edit-invoice],[data-del-invoice],[data-view-payment],[data-edit-payment],[data-del-payment],[data-view-maint],[data-edit-maint],[data-del-maint]');
+    const t = e.target.closest('[data-view-receipt],[data-view-prop],[data-edit-prop],[data-del-prop],[data-view-unit],[data-edit-unit],[data-del-unit],[data-view-tenant],[data-edit-tenant],[data-del-tenant],[data-view-lease],[data-edit-lease],[data-del-lease],[data-view-invoice],[data-edit-invoice],[data-del-invoice],[data-view-payment],[data-edit-payment],[data-del-payment],[data-view-maint],[data-edit-maint],[data-del-maint],[data-view-bankstatement],[data-edit-bankstatement],[data-del-bankstatement]');
     if (!t) return;
     if (t.dataset.viewReceipt) return modalReceipt(t.dataset.viewReceipt);
     const ds = t.dataset;
@@ -430,6 +512,9 @@ function attachActions(route) {
     if (ds.viewMaint) return modalViewMaintenance(ds.viewMaint);
     if (ds.editMaint) return modalMaintenance(ds.editMaint);
     if (ds.delMaint) { if(confirm('Delete ticket?')){ remove('maintenance', ds.delMaint); render('maintenance'); } return; }
+    if (ds.viewBankstatement) return modalViewBankStatement(ds.viewBankstatement);
+    if (ds.editBankstatement) return modalBankStatement(ds.editBankstatement);
+    if (ds.delBankstatement) { if(confirm('Delete bank statement entry?')){ remove('bankstatement', ds.delBankstatement); render('bankstatement'); } return; }
   });
 }
 
@@ -1030,6 +1115,10 @@ function modalViewMaintenance(id) {
   const m = list('maintenance').find(x=>x.id===id); const u=list('units').find(x=>x.id===m.unitId);
   openModal('Maintenance', `<div><strong>${m.title}</strong><div class="muted">Unit: ${u?.name||'-'} • Status: ${m.status}</div></div>`);
 }
+function modalViewBankStatement(id) {
+  const entry = list('bankstatement').find(x=>x.id===id);
+  openModal('Bank Statement', `<div><strong>${entry?.bankName||'-'}</strong><div class="muted">${entry?.accountHolder||'-'}</div><div>Debited: ${fmtKES(entry?.amountDebited||0)} • Drawn: ${fmtKES(entry?.amountDrawn||0)} • Balance: ${fmtKES(entry?.accountBalance||0)}</div></div>`);
+}
 
 function modalInvoiceEdit(id) {
   const d = load();
@@ -1051,6 +1140,160 @@ function modalInvoiceEdit(id) {
     update('invoices', id, { dueDate: new Date(val.dueDate).toISOString(), status: val.status, total: Number(val.total) });
     document.querySelector('.modal-backdrop').remove();
     render('invoices');
+  });
+  body.querySelector('[data-close-modal]').addEventListener('click', ()=> document.querySelector('.modal-backdrop').remove());
+}
+
+function modalBankStatement(id=null) {
+  const entries = list('bankstatement');
+  const data = id ? entries.find(b=>b.id===id) : {};
+  const body = openModal(id?'Edit Bank Entry':'Add Bank Entry', `
+    <form class="form" id="bankstatementForm">
+      <label>Bank ID<input name="bankId" required value="${data?.bankId||''}"/></label>
+      <label>Bank Name<input name="bankName" required value="${data?.bankName||''}"/></label>
+      <label>Account Number<input name="accountNumber" required value="${data?.accountNumber||''}"/></label>
+      <label>Account Holder<input name="accountHolder" required value="${data?.accountHolder||''}"/></label>
+      <label>Debit Date<input type="date" name="debitDate" required value="${data?.debitDate ? data.debitDate.slice(0,10) : ''}"/></label>
+      <label>Amount Debited (KES)<input type="number" name="amountDebited" min="0" step="1" value="${data?.amountDebited||0}"/></label>
+      <label>Bank Charges / Tax (KES)<input type="number" name="bankCharges" min="0" step="1" value="${data?.bankCharges||0}"/></label>
+      <label>Amount Withdrawn (KES)<input type="number" name="amountDrawn" min="0" step="1" value="${data?.amountDrawn||0}"/></label>
+      <label>Calculated Balance (KES)<input type="number" name="calculatedBalance" min="0" step="1" readonly value="0"/></label>
+      <div class="actions-row">
+        <button class="btn" type="submit">${id?'Save':'Add'}</button>
+        <button class="btn btn-light" type="button" data-close-modal>Cancel</button>
+      </div>
+    </form>
+  `);
+  const form = body.querySelector('#bankstatementForm');
+  const amountDebited = form.querySelector('[name="amountDebited"]');
+  const bankCharges = form.querySelector('[name="bankCharges"]');
+  const amountDrawn = form.querySelector('[name="amountDrawn"]');
+  const calculatedBalance = form.querySelector('[name="calculatedBalance"]');
+  
+  function calcBalance() {
+    const debited = Number(amountDebited.value||0);
+    const charges = Number(bankCharges.value||0);
+    const drawn = Number(amountDrawn.value||0);
+    const balance = debited - charges - drawn;
+    calculatedBalance.value = Math.max(balance, 0);
+  }
+  amountDebited.addEventListener('input', calcBalance);
+  bankCharges.addEventListener('input', calcBalance);
+  amountDrawn.addEventListener('input', calcBalance);
+  calcBalance();
+  
+  form.addEventListener('submit', (e)=>{
+    e.preventDefault();
+    const val = formToObj(form);
+    val.amountDebited = Number(val.amountDebited||0);
+    val.bankCharges = Number(val.bankCharges||0);
+    val.amountDrawn = Number(val.amountDrawn||0);
+    val.debitDate = val.debitDate ? new Date(val.debitDate).toISOString() : '';
+    if (id) update('bankstatement', id, val); else add('bankstatement', { id: crypto.randomUUID(), ...val });
+    document.querySelector('.modal-backdrop').remove();
+    render('bankstatement');
+  });
+  body.querySelector('[data-close-modal]').addEventListener('click', ()=> document.querySelector('.modal-backdrop').remove());
+}
+
+function modalWithdrawFromAccount() {
+  const entries = list('bankstatement');
+  const uniqueBanks = {};
+  entries.forEach(e => {
+    const key = `${e.bankId}_${e.accountNumber}`;
+    if (!uniqueBanks[key]) {
+      uniqueBanks[key] = e;
+    }
+  });
+  
+  const body = openModal('Withdraw From Account', `
+    <form class="form" id="withdrawForm">
+      <label>Bank Account<select name="bankEntryId" required>
+        ${Object.values(uniqueBanks).map(e=>`<option value="${e.id}">${e.bankName} • ${e.accountHolder} • Acct: ${e.accountNumber}</option>`).join('')}
+      </select></label>
+      <label>Withdrawal Amount (KES)<input type="number" name="withdrawAmount" required min="0" step="1"/></label>
+      <label>Bank Charges / Tax (KES)<input type="number" name="withdrawCharges" min="0" step="1" value="0"/></label>
+      <label>Description / Purpose<input name="description" placeholder="e.g., Maintenance, Utilities, etc."/></label>
+      <label>Current Balance (KES)<input type="number" name="currentBalance" readonly/></label>
+      <label>New Balance (KES)<input type="number" name="newBalance" readonly/></label>
+      <div class="actions-row">
+        <button class="btn" type="submit">Withdraw</button>
+        <button class="btn btn-light" type="button" data-close-modal>Cancel</button>
+      </div>
+    </form>
+  `);
+  const form = body.querySelector('#withdrawForm');
+  const withdrawAmount = form.querySelector('[name="withdrawAmount"]');
+  const withdrawCharges = form.querySelector('[name="withdrawCharges"]');
+  const bankEntrySelect = form.querySelector('[name="bankEntryId"]');
+  const currentBalance = form.querySelector('[name="currentBalance"]');
+  const newBalance = form.querySelector('[name="newBalance"]');
+  
+  function calcCurrentBalance() {
+    const selectedEntryId = bankEntrySelect.value;
+    const selectedEntry = entries.find(e=>e.id===selectedEntryId);
+    if (!selectedEntry) return;
+    
+    const key = `${selectedEntry.bankId}_${selectedEntry.accountNumber}`;
+    const bankEntries = entries.filter(e => `${e.bankId}_${e.accountNumber}` === key);
+    
+    let totalWithdrawn = 0;
+    let totalCharges = 0;
+    bankEntries.forEach(e => {
+      totalWithdrawn += Number(e.amountDrawn || 0);
+      totalCharges += Number(e.bankCharges || 0);
+    });
+    
+    const debited = Number(selectedEntry.amountDebited || 0);
+    const current = debited - totalWithdrawn - totalCharges;
+    currentBalance.value = Math.max(current, 0);
+    
+    calcNewBalance();
+  }
+  
+  function calcNewBalance() {
+    const current = Number(currentBalance.value||0);
+    const withdrawal = Number(withdrawAmount.value||0);
+    const charges = Number(withdrawCharges.value||0);
+    const newBal = current - withdrawal - charges;
+    newBalance.value = Math.max(newBal, 0);
+  }
+  
+  withdrawAmount.addEventListener('input', calcNewBalance);
+  withdrawCharges.addEventListener('input', calcNewBalance);
+  bankEntrySelect.addEventListener('change', calcCurrentBalance);
+  
+  calcCurrentBalance();
+  
+  form.addEventListener('submit', (e)=>{
+    e.preventDefault();
+    const val = formToObj(form);
+    const selectedEntryId = val.bankEntryId;
+    const selectedEntry = entries.find(e=>e.id===selectedEntryId);
+    
+    if (!selectedEntry) return;
+    
+    const withdrawalAmount = Number(val.withdrawAmount||0);
+    const charges = Number(val.withdrawCharges||0);
+    
+    const withdrawEntry = {
+      id: crypto.randomUUID(),
+      bankId: selectedEntry.bankId,
+      bankName: selectedEntry.bankName,
+      accountNumber: selectedEntry.accountNumber,
+      accountHolder: selectedEntry.accountHolder,
+      debitDate: new Date().toISOString(),
+      amountDebited: 0,
+      amountDrawn: withdrawalAmount,
+      bankCharges: charges,
+      description: val.description || 'Withdrawal',
+      created: new Date().toISOString()
+    };
+    
+    add('bankstatement', withdrawEntry);
+    
+    document.querySelector('.modal-backdrop').remove();
+    render('bankstatement');
   });
   body.querySelector('[data-close-modal]').addEventListener('click', ()=> document.querySelector('.modal-backdrop').remove());
 }
